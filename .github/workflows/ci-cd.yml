@@ -1,0 +1,371 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  REGISTRY: ghcr.io
+  OJS_IMAGE: ghcr.io/${{ github.repository_owner }}/research-platform-ojs
+  LARAVEL_IMAGE: ghcr.io/${{ github.repository_owner }}/research-platform-laravel-api
+  KIND_CLUSTER_NAME: research-platform-ci
+
+jobs:
+  # ---------------------------------------------------------------
+  # Job 1: lint & unit test the Laravel API in isolation. Fast-fail
+  # before we spend time building images / spinning up a cluster.
+  # ---------------------------------------------------------------
+  laravel-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.2"
+          extensions: mbstring, pdo_mysql, gd, zip, xml, curl, bcmath, intl, apcu
+          coverage: none
+
+      - name: Bootstrap Laravel skeleton
+        run: |
+          composer global require laravel/installer --no-interaction || true
+          bash scripts/bootstrap-laravel-api.sh
+
+      - name: Install Composer dependencies
+        working-directory: laravel-api
+        run: composer install --no-interaction --prefer-dist
+
+      - name: Run Laravel Pint (style check)
+        working-directory: laravel-api
+        run: vendor/bin/pint --test
+        continue-on-error: true # style issues shouldn't block a portfolio CI run, but are visible
+
+      - name: Run PHPUnit (in-memory sqlite, no external DB needed)
+        working-directory: laravel-api
+        run: vendor/bin/phpunit
+
+  # ---------------------------------------------------------------
+  # Job 2: build both Docker images. Runs regardless of whether we go
+  # on to deploy, so a broken Dockerfile fails CI even on a PR from a
+  # fork without cluster/registry credentials.
+  # ---------------------------------------------------------------
+  build-images:
+    needs: laravel-test
+    runs-on: ubuntu-latest
+    outputs:
+      ojs-tar: ojs-image.tar
+      laravel-tar: laravel-image.tar
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Bootstrap Laravel skeleton
+        run: bash scripts/bootstrap-laravel-api.sh
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build OJS image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./ojs
+          tags: ${{ env.OJS_IMAGE }}:${{ github.sha }}
+          outputs: type=docker,dest=/tmp/ojs-image.tar
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build Laravel API image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./laravel-api
+          tags: ${{ env.LARAVEL_IMAGE }}:${{ github.sha }}
+          outputs: type=docker,dest=/tmp/laravel-image.tar
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Scan images for known vulnerabilities (Trivy)
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          input: /tmp/ojs-image.tar
+          format: table
+          severity: CRITICAL,HIGH
+          exit-code: "0" # report, don't hard-fail a portfolio CI run on upstream CVEs we don't control
+        continue-on-error: true
+
+      - name: Upload image artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-images
+          path: |
+            /tmp/ojs-image.tar
+            /tmp/laravel-image.tar
+          retention-days: 1
+
+  # ---------------------------------------------------------------
+  # Job 3: validate the Helm chart itself, independent of any cluster.
+  # ---------------------------------------------------------------
+  helm-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: "v3.16.3"
+
+      - name: helm lint (default values)
+        run: helm lint helm/research-platform
+
+      - name: helm lint (dev values)
+        run: helm lint helm/research-platform -f helm/research-platform/values-dev.yaml
+
+      - name: helm lint (prod values)
+        run: helm lint helm/research-platform -f helm/research-platform/values-prod.yaml
+
+      - name: helm template (renders every manifest — catches Go-template errors that lint misses)
+        run: |
+          helm template research-platform helm/research-platform \
+            -f helm/research-platform/values-dev.yaml \
+            --set createSecrets=true \
+            --set secretValues.mysqlRootPassword=ci-placeholder \
+            --set secretValues.mysqlAppPassword=ci-placeholder \
+            --set secretValues.ojsAppKey=ci-placeholder \
+            --set secretValues.laravelAppKey=ci-placeholder \
+            > /tmp/rendered-manifests.yaml
+          echo "Rendered $(grep -c '^kind:' /tmp/rendered-manifests.yaml) Kubernetes objects."
+          # The real, load-bearing proof that these manifests are valid
+          # is job 4 (deploy-to-kind) actually applying them to a live
+          # cluster and waiting for rollouts — not a third-party schema
+          # validator here, which would just duplicate that check with
+          # less confidence.
+
+  # ---------------------------------------------------------------
+  # Job 4: the real deployment proof. Spins up a throwaway Kind
+  # cluster *inside the CI runner*, loads the images we just built
+  # (no registry round-trip needed), installs the Helm chart, and
+  # verifies the app actually comes up and responds — then tears
+  # everything down. This is a genuine, if small-scale, deployment —
+  # see docs/deployment.md "What this CI job proves (and doesn't)"
+  # for exactly what that claim does and doesn't cover.
+  # ---------------------------------------------------------------
+  deploy-to-kind:
+    needs: [build-images, helm-validate]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download built image artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-images
+          path: /tmp
+
+      - name: Load images into the local Docker daemon
+        run: |
+          docker load --input /tmp/ojs-image.tar
+          docker load --input /tmp/laravel-image.tar
+          docker tag ${{ env.OJS_IMAGE }}:${{ github.sha }} ${{ env.OJS_IMAGE }}:ci
+          docker tag ${{ env.LARAVEL_IMAGE }}:${{ github.sha }} ${{ env.LARAVEL_IMAGE }}:ci
+
+      - name: Create ephemeral Kind cluster
+        uses: helm/kind-action@v1.10.0
+        with:
+          cluster_name: ${{ env.KIND_CLUSTER_NAME }}
+          config: .github/kind-config.yaml
+
+      - name: Install ingress-nginx (required by the chart's Ingress)
+        run: |
+          kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.11.2/deploy/static/provider/kind/deploy.yaml
+          kubectl wait --namespace ingress-nginx \
+            --for=condition=ready pod \
+            --selector=app.kubernetes.io/component=controller \
+            --timeout=120s
+
+      - name: Load application images directly into Kind
+        run: |
+          kind load docker-image ${{ env.OJS_IMAGE }}:ci --name ${{ env.KIND_CLUSTER_NAME }}
+          kind load docker-image ${{ env.LARAVEL_IMAGE }}:ci --name ${{ env.KIND_CLUSTER_NAME }}
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: "v3.16.3"
+
+      - name: Deploy the Helm chart (Helm-created secrets, CI-only placeholder values)
+        run: |
+          helm install research-platform helm/research-platform \
+            --namespace research-platform \
+            --create-namespace \
+            -f helm/research-platform/values-dev.yaml \
+            --set ojs.image.repository=${{ env.OJS_IMAGE }} \
+            --set ojs.image.tag=ci \
+            --set ojs.image.pullPolicy=Never \
+            --set laravelApi.image.repository=${{ env.LARAVEL_IMAGE }} \
+            --set laravelApi.image.tag=ci \
+            --set laravelApi.image.pullPolicy=Never \
+            --set createSecrets=true \
+            --set secretValues.mysqlRootPassword="$(openssl rand -hex 16)" \
+            --set secretValues.mysqlAppPassword="$(openssl rand -hex 16)" \
+            --set secretValues.ojsAppKey="$(openssl rand -base64 32)" \
+            --set secretValues.laravelAppKey="base64:$(openssl rand -base64 32)" \
+            --wait --timeout 5m
+
+      - name: Wait for all rollouts
+        run: |
+          kubectl -n research-platform rollout status deployment/mysql --timeout=180s
+          kubectl -n research-platform rollout status deployment/laravel-api --timeout=180s
+          kubectl -n research-platform rollout status deployment/ojs --timeout=180s
+
+      - name: Verify pods and services are healthy
+        run: |
+          kubectl -n research-platform get pods -o wide
+          kubectl -n research-platform get svc
+          kubectl -n research-platform get pods --field-selector=status.phase!=Running --no-headers | tee /tmp/unhealthy.txt
+          if [ -s /tmp/unhealthy.txt ]; then
+            echo "One or more pods are not Running:"
+            cat /tmp/unhealthy.txt
+            exit 1
+          fi
+
+      - name: Smoke test — Laravel API health endpoint
+        run: |
+          kubectl -n research-platform port-forward svc/laravel-api 8081:80 &
+          PF_PID=$!
+          sleep 5
+          STATUS=$(curl -s -o /tmp/health.json -w "%{http_code}" http://localhost:8081/api/health)
+          cat /tmp/health.json
+          kill $PF_PID
+          test "$STATUS" = "200"
+
+      - name: Smoke test — Laravel API researchers endpoint (end-to-end DB round trip)
+        run: |
+          kubectl -n research-platform port-forward svc/laravel-api 8081:80 &
+          PF_PID=$!
+          sleep 5
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://localhost:8081/api/researchers \
+            -H "Content-Type: application/json" \
+            -d '{"name":"CI Smoke Test","email":"ci-smoke-test@example.com"}')
+          kill $PF_PID
+          test "$STATUS" = "201"
+
+      - name: Verify OJS is reachable
+        run: |
+          kubectl -n research-platform port-forward svc/ojs 8080:80 &
+          PF_PID=$!
+          sleep 10
+          # OJS redirects to its install wizard on a fresh DB, which is
+          # the expected/correct behavior here — this smoke test proves
+          # OJS is serving HTTP responses backed by a working DB
+          # connection, NOT that a journal has been fully configured.
+          STATUS=$(curl -s -o /tmp/ojs-response.html -w "%{http_code}" -L http://localhost:8080/index.php/index/install)
+          kill $PF_PID
+          echo "OJS responded with HTTP ${STATUS}"
+          test "$STATUS" = "200"
+
+      - name: Smoke test — reach both services through the real Ingress
+        run: |
+          # Uses the Kind cluster's hostPort 80 mapping (see
+          # .github/kind-config.yaml) plus a Host header, since we
+          # don't have real DNS for research-platform.local in CI.
+          # This is what actually proves the Ingress rules/path
+          # rewrites are correct, as opposed to the port-forward tests
+          # above, which bypass Ingress/ingress-nginx entirely.
+          LARAVEL_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: research-platform.local" http://localhost/api/health)
+          echo "Ingress -> Laravel API health: HTTP ${LARAVEL_STATUS}"
+          test "$LARAVEL_STATUS" = "200"
+
+          OJS_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -L -H "Host: research-platform.local" http://localhost/index.php/index/install)
+          echo "Ingress -> OJS install page: HTTP ${OJS_STATUS}"
+          test "$OJS_STATUS" = "200"
+
+      - name: Collect diagnostics on failure
+        if: failure()
+        run: |
+          mkdir -p /tmp/ci-diagnostics
+          kubectl -n research-platform get all -o wide > /tmp/ci-diagnostics/get-all.txt || true
+          kubectl -n research-platform get events --sort-by=.lastTimestamp > /tmp/ci-diagnostics/events.txt || true
+          for pod in $(kubectl -n research-platform get pods -o jsonpath='{.items[*].metadata.name}'); do
+            kubectl -n research-platform logs "$pod" --all-containers --tail=200 > "/tmp/ci-diagnostics/${pod}.log" || true
+            kubectl -n research-platform describe pod "$pod" > "/tmp/ci-diagnostics/${pod}-describe.txt" || true
+          done
+
+      - name: Upload diagnostics artifact on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-diagnostics
+          path: /tmp/ci-diagnostics
+          retention-days: 7
+
+      - name: Tear down Kind cluster
+        if: always()
+        run: kind delete cluster --name ${{ env.KIND_CLUSTER_NAME }}
+
+  # ---------------------------------------------------------------
+  # Job 5: push images to GHCR. Only on main, and only after the Kind
+  # deployment above has proven the images actually work together —
+  # not just that they build.
+  # ---------------------------------------------------------------
+  push-images:
+    needs: deploy-to-kind
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Bootstrap Laravel skeleton
+        run: bash scripts/bootstrap-laravel-api.sh
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push OJS image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./ojs
+          push: true
+          tags: |
+            ${{ env.OJS_IMAGE }}:${{ github.sha }}
+            ${{ env.OJS_IMAGE }}:latest
+
+      - name: Build and push Laravel API image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./laravel-api
+          push: true
+          tags: |
+            ${{ env.LARAVEL_IMAGE }}:${{ github.sha }}
+            ${{ env.LARAVEL_IMAGE }}:latest
+
+  # ---------------------------------------------------------------
+  # Job 6: deploy to a real cloud cluster. Disabled by default — see
+  # docs/deployment.md "Local vs cloud" for exactly what secrets and
+  # cluster this would need. This job is intentionally left as a
+  # documented, non-executing placeholder rather than faked: there is
+  # no real cloud cluster behind this project, and pretending
+  # otherwise would misrepresent what's actually been demonstrated.
+  # ---------------------------------------------------------------
+  deploy-to-cloud:
+    needs: push-images
+    if: false # flip on only once a real EKS/GKE/AKS cluster + secrets exist
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "Not implemented: this job intentionally never runs."
+          echo "See docs/deployment.md for what a real cloud deployment step would require:"
+          echo "  - a kubeconfig or OIDC role stored in repo/environment secrets"
+          echo "  - a cloud StorageClass (values-prod.yaml already assumes gp3/EKS-style naming)"
+          echo "  - a real Ingress controller + DNS + TLS cert"

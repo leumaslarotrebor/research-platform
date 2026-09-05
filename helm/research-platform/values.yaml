@@ -1,0 +1,83 @@
+# helm/research-platform/values.yaml
+# Default values — overridden by values-dev.yaml / values-prod.yaml.
+
+namespace: research-platform
+
+ojs:
+  image:
+    repository: ghcr.io/YOUR_GITHUB_USERNAME/research-platform-ojs
+    tag: latest
+    pullPolicy: IfNotPresent
+  replicaCount: 1
+  baseUrl: http://localhost:8080
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+  storage:
+    filesSize: 10Gi
+    publicSize: 2Gi
+    storageClassName: "" # empty = cluster default
+
+laravelApi:
+  image:
+    repository: ghcr.io/YOUR_GITHUB_USERNAME/research-platform-laravel-api
+    tag: latest
+    pullPolicy: IfNotPresent
+  replicaCount: 2
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# Secrets are NOT created with plaintext defaults in this chart. By
+# default (createSecrets: false) the chart assumes mysql-credentials,
+# ojs-app-secret, and laravel-app-secret already exist in the target
+# namespace (created imperatively via `kubectl create secret`, exactly
+# as shown in docs/security.md and k8s/*.yaml.example). Setting
+# createSecrets: true lets `helm install` create them instead, sourced
+# from secretValues — which you supply via `--set` or a separate,
+# gitignored values-secrets.yaml, NEVER committed to this repo.
+createSecrets: false
+secretValues:
+  mysqlRootPassword: ""
+  mysqlAppPassword: ""
+  ojsAppKey: ""
+  laravelAppKey: ""
+
+mysql:
+  image:
+    repository: mysql
+    tag: "8.0"
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+  storage:
+    size: 5Gi
+    storageClassName: ""
+  # Non-sensitive DB naming only. Passwords are NEVER set here — they
+  # come from a pre-created Secret (see templates/secret.yaml and
+  # docs/security.md) so `helm install` never needs a plaintext
+  # password on the command line or in values files.
+  database: ojs
+  user: ojs_app_user
+  existingSecret: mysql-credentials
+
+ingress:
+  enabled: true
+  className: nginx
+  host: research-platform.local
+
+monitoring:
+  enabled: false # flip on if kube-prometheus-stack is installed in this cluster
+  prometheusReleaseLabel: kube-prometheus-stack # must match the release label Prometheus's serviceMonitorSelector expects

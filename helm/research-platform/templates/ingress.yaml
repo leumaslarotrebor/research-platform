@@ -1,0 +1,35 @@
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: research-platform
+  namespace: {{ include "research-platform.namespace" . }}
+  labels:
+    {{- include "research-platform.labels" . | nindent 4 }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  rules:
+    - host: {{ .Values.ingress.host }}
+      http:
+        paths:
+          # /api first (more specific) — no rewrite: Laravel's own
+          # routing already expects requests prefixed with /api, so
+          # forwarding the path unmodified is correct. See
+          # k8s/ingress.yaml for the fuller explanation of the bug
+          # this fixed (an earlier draft stripped /api, which broke
+          # every Research API request).
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: laravel-api
+                port:
+                  number: 80
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: ojs
+                port:
+                  number: 80
+{{- end }}

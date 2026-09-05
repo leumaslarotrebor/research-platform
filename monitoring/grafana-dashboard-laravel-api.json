@@ -1,0 +1,84 @@
+{
+  "title": "Research Platform — Laravel API",
+  "uid": "research-platform-laravel-api",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Request rate (req/s, by route)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum(rate(http_requests_total{job=\"laravel-api\"}[5m])) by (route)",
+          "legendFormat": "{{route}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Average request latency (seconds, by route)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "description": "Average, not a percentile — see app/Http/Middleware/TrackRequestMetrics.php for why this project tracks sum/count rather than histogram buckets.",
+      "targets": [
+        {
+          "expr": "sum(rate(http_request_duration_seconds_sum{job=\"laravel-api\"}[5m])) by (route) / sum(rate(http_request_duration_seconds_count{job=\"laravel-api\"}[5m])) by (route)",
+          "legendFormat": "{{route}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Error rate (5xx responses, req/s)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "expr": "sum(rate(http_requests_total{job=\"laravel-api\", status=~\"5..\"}[5m]))",
+          "legendFormat": "5xx errors"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "HTTP status mix (req/s, by status)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        {
+          "expr": "sum(rate(http_requests_total{job=\"laravel-api\"}[5m])) by (status)",
+          "legendFormat": "{{status}}"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Application availability (scrape success)",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 16 },
+      "description": "Standard Prometheus 'up' metric, synthesized automatically per scrape target — not something this project hand-rolls (see app/Http/Controllers/MetricsController.php comment on why).",
+      "targets": [
+        {
+          "expr": "avg(up{job=\"laravel-api\"})"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              { "value": 0, "color": "red" },
+              { "value": 1, "color": "green" }
+            ]
+          },
+          "max": 1,
+          "min": 0
+        }
+      }
+    }
+  ]
+}

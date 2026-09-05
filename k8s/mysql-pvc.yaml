@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-data
+  namespace: research-platform
+  labels:
+    app.kubernetes.io/name: mysql
+    app.kubernetes.io/part-of: research-platform
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  # No storageClassName set deliberately — this lets the cluster's
+  # default StorageClass handle provisioning. Kind ships a default
+  # "standard" StorageClass (local-path-provisioner) out of the box;
+  # in a cloud cluster you'd typically pin this to something like
+  # "gp3" (EKS) — see docs/deployment.md for what changes per-cloud.

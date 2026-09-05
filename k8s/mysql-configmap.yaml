@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mysql-init-scripts
+  namespace: research-platform
+  labels:
+    app.kubernetes.io/name: mysql
+    app.kubernetes.io/part-of: research-platform
+data:
+  01-create-research-api-db.sh: |
+    #!/bin/bash
+    set -euo pipefail
+    mysql -u root -p"${MYSQL_ROOT_PASSWORD}" <<-EOSQL
+        CREATE DATABASE IF NOT EXISTS research_api
+            CHARACTER SET utf8mb4
+            COLLATE utf8mb4_unicode_ci;
+        GRANT ALL PRIVILEGES ON research_api.* TO '${MYSQL_USER}'@'%';
+        FLUSH PRIVILEGES;
+    EOSQL

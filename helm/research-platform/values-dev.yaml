@@ -1,0 +1,31 @@
+# helm/research-platform/values-dev.yaml
+# For local Kind clusters. Smaller footprint, no monitoring by default.
+
+ojs:
+  image:
+    tag: dev
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  storage:
+    filesSize: 2Gi
+    publicSize: 1Gi
+
+laravelApi:
+  replicaCount: 1
+  image:
+    tag: dev
+
+mysql:
+  storage:
+    size: 2Gi
+
+ingress:
+  host: research-platform.local
+
+monitoring:
+  enabled: false

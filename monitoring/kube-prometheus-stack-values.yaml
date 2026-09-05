@@ -1,0 +1,70 @@
+# monitoring/kube-prometheus-stack-values.yaml
+#
+# Passed to the THIRD-PARTY kube-prometheus-stack Helm chart (not
+# written by us), via:
+#
+#   helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+#   helm install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
+#     --namespace monitoring --create-namespace \
+#     -f monitoring/kube-prometheus-stack-values.yaml
+#
+# We deliberately do NOT hand-write Prometheus's own CRDs/RBAC/Operator
+# manifests — that's exactly what this upstream chart exists to manage
+# correctly. Our only contribution is: (1) these scoped-down resource
+# values so it doesn't try to consume portfolio-laptop-scale resources
+# meant for a real cluster, and (2) the ServiceMonitor in
+# helm/research-platform/templates/servicemonitor.yaml that tells the
+# Prometheus this chart installs where to find our app's metrics.
+
+grafana:
+  enabled: true
+  adminPassword: "" # intentionally left blank — set via --set grafana.adminPassword=... at install time, never committed
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+  # Auto-loads our dashboard JSON as a ConfigMap-backed Grafana
+  # dashboard provider, so it appears without manual import.
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+        - name: research-platform
+          orgId: 1
+          folder: "Research Platform"
+          type: file
+          disableDeletion: false
+          editable: true
+          options:
+            path: /var/lib/grafana/dashboards/research-platform
+  dashboardsConfigMaps:
+    research-platform: "research-platform-grafana-dashboard"
+
+prometheus:
+  prometheusSpec:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 512Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
+    retention: 3d # portfolio scale — no need for weeks of retention
+    # Only watch ServiceMonitors carrying our release label, so this
+    # Prometheus doesn't also try to scrape every ServiceMonitor a
+    # future cluster tenant might add.
+    serviceMonitorSelector:
+      matchLabels:
+        release: kube-prometheus-stack
+
+alertmanager:
+  enabled: false # no on-call pager exists for a portfolio project — alerting rules without a real recipient are theater
+
+nodeExporter:
+  enabled: true # cheap, gives real container/host CPU-mem numbers for "resource monitoring" without any app-side work
+
+kubeStateMetrics:
+  enabled: true

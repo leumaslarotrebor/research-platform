@@ -1,0 +1,33 @@
+{{- if .Values.monitoring.enabled }}
+# This is a ServiceMonitor Custom Resource — its CRD is installed by
+# the kube-prometheus-stack Helm chart (see docs/deployment.md), not
+# by this chart. We are NOT hand-writing Prometheus's own RBAC or
+# CRDs here, only registering our Service as a scrape target using
+# the CRD that chart already provides — the standard, supported
+# integration point for "Prometheus, please scrape my app".
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: laravel-api
+  namespace: {{ include "research-platform.namespace" . }}
+  labels:
+    app.kubernetes.io/name: laravel-api
+    {{- include "research-platform.labels" . | nindent 4 }}
+    # kube-prometheus-stack's Prometheus CR only watches ServiceMonitors
+    # matching its serviceMonitorSelector — by default this is "any",
+    # but we set release: <helm release name of kube-prometheus-stack>
+    # here to match the common convention documented in
+    # docs/deployment.md, in case that default has been narrowed.
+    release: {{ .Values.monitoring.prometheusReleaseLabel | default "kube-prometheus-stack" }}
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: laravel-api
+  namespaceSelector:
+    matchNames:
+      - {{ include "research-platform.namespace" . }}
+  endpoints:
+    - port: http
+      path: /api/metrics
+      interval: 15s
+{{- end }}

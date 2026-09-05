@@ -1,0 +1,29 @@
+# Secrets / local env
+.env
+*.env
+!.env.example
+
+# Laravel
+laravel-api/vendor/
+laravel-api/.env
+laravel-api/storage/*.key
+laravel-api/storage/logs/*
+laravel-api/storage/framework/cache/*
+laravel-api/storage/framework/sessions/*
+laravel-api/storage/framework/views/*
+laravel-api/bootstrap/cache/*.php
+
+# OJS (fetched at build time, never committed)
+ojs/ojs-src/
+
+# General
+.DS_Store
+*.log
+node_modules/
+
+# Helm
+helm/**/charts/
+helm/**/*.tgz
+
+# Kind/kube
+kubeconfig*.yaml

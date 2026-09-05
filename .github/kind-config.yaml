@@ -1,0 +1,21 @@
+# .github/kind-config.yaml
+# Single-node Kind cluster with the port mappings ingress-nginx's Kind
+# manifest expects (80/443 on the control-plane node), so the
+# ingress-nginx install command used in ci-cd.yml works unmodified.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+    kubeadmConfigPatches:
+      - |
+        kind: InitConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            node-labels: "ingress-ready=true"
+    extraPortMappings:
+      - containerPort: 80
+        hostPort: 80
+        protocol: TCP
+      - containerPort: 443
+        hostPort: 443
+        protocol: TCP

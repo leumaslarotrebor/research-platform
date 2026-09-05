@@ -1,0 +1,17 @@
+apiVersion: v2
+name: research-platform
+description: >
+  Helm chart for the Open Research Platform portfolio project — OJS
+  (Open Journal Systems), a companion Laravel Research API, and MySQL.
+  OJS itself is third-party open-source software (PKP); this chart
+  packages the deployment/infrastructure work only.
+type: application
+version: 0.1.0
+appVersion: "3.5.0-2"
+keywords:
+  - ojs
+  - laravel
+  - mysql
+  - research
+maintainers:
+  - name: Samuel Oral Robert V

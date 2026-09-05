@@ -1,0 +1,41 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: research-platform
+  namespace: research-platform
+  labels:
+    app.kubernetes.io/part-of: research-platform
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: research-platform.local
+      http:
+        paths:
+          # More specific path first. Laravel's own routing (see
+          # scripts/bootstrap-laravel-api.sh, which registers
+          # routes/api.php via withRouting(api: ...)) already expects
+          # incoming requests prefixed with /api — so this Ingress
+          # does NOT rewrite/strip the prefix before forwarding.
+          # (An earlier draft used a rewrite-target that stripped
+          # /api, which would have made every Research API request
+          # 404 inside the container — fixed here.)
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: laravel-api
+                port:
+                  number: 80
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: ojs
+                port:
+                  number: 80
+# Requires an ingress controller (e.g. ingress-nginx) to already be
+# installed in the cluster — this manifest only creates the routing
+# rule, not the controller. See docs/deployment.md for the Kind setup
+# command. For local access, add "127.0.0.1 research-platform.local"
+# to /etc/hosts once the ingress controller's LoadBalancer/NodePort is
+# port-forwarded.

@@ -1,0 +1,83 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: laravel-api
+  namespace: {{ include "research-platform.namespace" . }}
+  labels:
+    app.kubernetes.io/name: laravel-api
+    {{- include "research-platform.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.laravelApi.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: laravel-api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: laravel-api
+        {{- include "research-platform.labels" . | nindent 8 }}
+    spec:
+      containers:
+        - name: laravel-api
+          image: "{{ .Values.laravelApi.image.repository }}:{{ .Values.laravelApi.image.tag }}"
+          imagePullPolicy: {{ .Values.laravelApi.image.pullPolicy }}
+          ports:
+            - containerPort: 80
+          env:
+            - name: APP_ENV
+              value: production
+            - name: APP_DEBUG
+              value: "false"
+            - name: DB_CONNECTION
+              value: mysql
+            - name: DB_HOST
+              value: mysql
+            - name: DB_PORT
+              value: "3306"
+            - name: DB_DATABASE
+              value: research_api
+            - name: DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.mysql.existingSecret }}
+                  key: db-user
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.mysql.existingSecret }}
+                  key: db-password
+            - name: APP_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: laravel-app-secret
+                  key: app-key
+          resources:
+            {{- toYaml .Values.laravelApi.resources | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 80
+            initialDelaySeconds: 20
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: laravel-api
+  namespace: {{ include "research-platform.namespace" . }}
+  labels:
+    app.kubernetes.io/name: laravel-api
+    {{- include "research-platform.labels" . | nindent 4 }}
+spec:
+  selector:
+    app.kubernetes.io/name: laravel-api
+  ports:
+    - port: 80
+      targetPort: 80
+      name: http

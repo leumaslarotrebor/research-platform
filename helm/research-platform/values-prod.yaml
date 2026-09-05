@@ -1,0 +1,64 @@
+# helm/research-platform/values-prod.yaml
+#
+# Illustrative production-shaped values for a realistic managed
+# Kubernetes cluster (e.g. EKS/GKE/AKS). This is NOT deployed or
+# tested by this project's CI — CI only proves the chart against an
+# ephemeral local Kind cluster (see .github/workflows/ci-cd.yml and
+# docs/deployment.md "Local vs cloud" section for exactly what
+# changes and why this file is documentation-grade, not battle-tested).
+
+ojs:
+  image:
+    tag: stable # a real project would pin an immutable digest/tag from CI, not "latest"
+  replicaCount: 1 # still 1 — see docs/architecture.md on why OJS isn't horizontally scaled here
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+  storage:
+    filesSize: 50Gi
+    publicSize: 5Gi
+    # Cloud clusters need an explicit StorageClass — Kind's default
+    # "standard" class doesn't exist on EKS/GKE/AKS. Example for EKS:
+    storageClassName: "gp3"
+
+laravelApi:
+  replicaCount: 3
+  image:
+    tag: stable
+  resources:
+    requests:
+      cpu: 250m
+      memory: 384Mi
+    limits:
+      cpu: "1"
+      memory: 768Mi
+
+# NOTE: for a real production deployment, running MySQL as an
+# in-cluster Deployment (as this chart does) is the part I'd actually
+# change first — see "Should MySQL run inside Kubernetes?" in
+# docs/architecture.md. These values keep the in-cluster MySQL for
+# consistency with the local/dev setup, but a managed database
+# (RDS/Cloud SQL/Azure Database for MySQL) is what I'd recommend for
+# anything beyond a portfolio demo.
+mysql:
+  storage:
+    size: 50Gi
+    storageClassName: "gp3"
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+
+ingress:
+  host: research-platform.example.com
+  className: nginx # or "alb" on EKS with the AWS Load Balancer Controller
+
+monitoring:
+  enabled: true

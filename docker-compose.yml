@@ -1,0 +1,77 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: research-platform-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${OJS_DB_NAME}
+      MYSQL_USER: ${OJS_DB_USER}
+      MYSQL_PASSWORD: ${OJS_DB_PASSWORD}
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./mysql-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - research-platform
+
+  ojs:
+    build:
+      context: ./ojs
+      args:
+        OJS_VERSION: ${OJS_VERSION:-3_5_0-2}
+    container_name: research-platform-ojs
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      OJS_DB_HOST: mysql
+      OJS_DB_NAME: ${OJS_DB_NAME}
+      OJS_DB_USER: ${OJS_DB_USER}
+      OJS_DB_PASSWORD: ${OJS_DB_PASSWORD}
+      OJS_BASE_URL: ${OJS_BASE_URL:-http://localhost:8080}
+      OJS_APP_KEY: ${OJS_APP_KEY}
+    ports:
+      - "8080:80"
+    volumes:
+      - ojs-files:/var/www/files
+      - ojs-public:/var/www/html/public
+    networks:
+      - research-platform
+
+  laravel-api:
+    build:
+      context: ./laravel-api
+    container_name: research-platform-laravel-api
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      APP_ENV: production
+      APP_DEBUG: "false"
+      APP_URL: ${LARAVEL_APP_URL:-http://localhost:8081}
+      DB_CONNECTION: mysql
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_DATABASE: research_api
+      DB_USERNAME: ${OJS_DB_USER}
+      DB_PASSWORD: ${OJS_DB_PASSWORD}
+    ports:
+      - "8081:80"
+    networks:
+      - research-platform
+
+networks:
+  research-platform:
+    driver: bridge
+
+volumes:
+  mysql-data:
+  ojs-files:
+  ojs-public:

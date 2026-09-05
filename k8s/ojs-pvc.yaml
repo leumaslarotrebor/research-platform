@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ojs-files
+  namespace: research-platform
+  labels:
+    app.kubernetes.io/name: ojs
+    app.kubernetes.io/part-of: research-platform
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ojs-public
+  namespace: research-platform
+  labels:
+    app.kubernetes.io/name: ojs
+    app.kubernetes.io/part-of: research-platform
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
