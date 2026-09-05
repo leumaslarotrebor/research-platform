@@ -6,8 +6,8 @@
 # This repository intentionally commits only the application code we
 # actually wrote for the Research API: app/Http/Controllers,
 # app/Http/Middleware, app/Models, database/migrations,
-# database/factories, routes/api.php, tests/, composer.json, and
-# .env.example.
+# database/factories, routes/api.php, tests/, composer.json,
+# phpunit.xml, and .env.example.
 #
 # It does NOT commit the standard Laravel 12 skeleton files
 # (bootstrap/app.php, bootstrap/providers.php, public/index.php,
@@ -17,6 +17,15 @@
 # script generates them for real, from the real package, instead of
 # us hand-typing framework internals from memory into a Git repo
 # where they'd quietly drift out of date with actual Laravel releases.
+#
+# bootstrap/cache/ is deliberately excluded from the copy too: the
+# temp project below installs Laravel's FULL stock skeleton (including
+# dev-only packages like laravel/pail), and its package-discovery
+# cache (bootstrap/cache/packages.php) would otherwise get copied in
+# referencing packages that were never installed into OUR
+# composer.json — causing a "Class ... not found" error the first
+# time Artisan boots. composer.json's post-autoload-dump hook (below)
+# regenerates this cache correctly for our actual dependencies instead.
 #
 # Run this once, from the laravel-api/ directory, before your first
 # `docker build` / `docker compose up`.
@@ -44,6 +53,7 @@ rsync -a "${TMP_DIR}/" ./ \
   --exclude 'composer.lock' \
   --exclude '.env.example' \
   --exclude 'phpunit.xml' \
+  --exclude 'bootstrap/cache/' \
   --exclude '.git/'
 
 rm -rf "${TMP_DIR}"
