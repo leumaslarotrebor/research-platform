@@ -43,6 +43,7 @@ rsync -a "${TMP_DIR}/" ./ \
   --exclude 'composer.json' \
   --exclude 'composer.lock' \
   --exclude '.env.example' \
+  --exclude 'phpunit.xml' \
   --exclude '.git/'
 
 rm -rf "${TMP_DIR}"
