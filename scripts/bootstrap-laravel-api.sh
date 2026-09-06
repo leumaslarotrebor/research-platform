@@ -54,6 +54,7 @@ rsync -a "${TMP_DIR}/" ./ \
   --exclude '.env.example' \
   --exclude 'phpunit.xml' \
   --exclude 'bootstrap/cache/' \
+  --exclude 'vendor/' \
   --exclude '.git/'
 
 rm -rf "${TMP_DIR}"

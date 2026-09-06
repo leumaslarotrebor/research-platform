@@ -1,0 +1,23 @@
+# laravel-api/.dockerignore
+#
+# vendor/ is the most important exclusion here: the Dockerfile's own
+# `composer install` builds a clean vendor/ INSIDE the image from this
+# project's real composer.json. If a host-generated vendor/ (e.g. left
+# over from scripts/bootstrap-laravel-api.sh's temp scaffolding
+# project, or from a developer's local `composer install`) were sent
+# into the build context, the Dockerfile's `COPY . .` step would
+# overwrite that clean, correctly-built vendor/ with whatever happens
+# to be on the host — which is exactly the bug that broke this
+# project's CI build once already.
+vendor/
+node_modules/
+.env
+.git
+.gitignore
+*.log
+storage/logs/*
+storage/framework/cache/*
+storage/framework/sessions/*
+storage/framework/views/*
+tests/
+.phpunit.result.cache
