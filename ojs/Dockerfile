@@ -11,7 +11,7 @@ FROM php:${PHP_VERSION}-apache-bookworm AS base
 # OJS 3.5 requires PHP 8.2+, so this build arg is deliberately pinned
 # to the version PKP tests against (see docs/architecture.md for the
 # compatibility rationale).
-ARG OJS_VERSION=3_5_0-2
+ARG OJS_VERSION=3.5.0-5
 
 LABEL org.opencontainers.image.title="OJS (Open Journal Systems)" \
       org.opencontainers.image.description="Containerized OJS ${OJS_VERSION}, packaged by this project. OJS is developed by the Public Knowledge Project (PKP), not by us." \

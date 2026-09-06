@@ -18,7 +18,7 @@
 
 | Component | Version | Why |
 |---|---|---|
-| OJS | 3.5.0-2 (LTS line) | 3.5 was designated PKP's next Long-Term-Support release; 3.4 was not given LTS status, and 3.3 is being phased out. Building on a lame-duck branch made no sense for a new project. |
+| OJS | 3.5.0-5 (LTS line) | 3.5 was designated PKP's next Long-Term-Support release; 3.4 was not given LTS status, and 3.3 is being phased out. Building on a lame-duck branch made no sense for a new project. |
 | PHP | 8.2 | OJS's own `composer check-platform-reqs` output (from the pkp/ojs GitHub repo) lists PHP 8.2 as the tested baseline. I cross-checked the exact extension list from that output rather than guessing — see the comment block in `ojs/Dockerfile`. |
 | MySQL | 8.0 | Actively-patched LTS-style release line, and the version most PKP documentation and community Docker examples assume. |
 | Laravel | 12 | Current stable Laravel release, PHP 8.2-compatible. |

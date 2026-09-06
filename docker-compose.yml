@@ -23,7 +23,7 @@ services:
     build:
       context: ./ojs
       args:
-        OJS_VERSION: ${OJS_VERSION:-3_5_0-2}
+        OJS_VERSION: ${OJS_VERSION:-3.5.0-5}
     container_name: research-platform-ojs
     restart: unless-stopped
     depends_on:
