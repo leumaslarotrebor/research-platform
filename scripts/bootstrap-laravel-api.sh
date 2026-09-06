@@ -58,6 +58,14 @@ rsync -a "${TMP_DIR}/" ./ \
 
 rm -rf "${TMP_DIR}"
 
+# bootstrap/cache/ was excluded from the copy above (to avoid the
+# stale package-discovery cache problem described earlier), but that
+# means the directory itself doesn't exist yet — and Laravel's
+# `artisan package:discover` (run automatically by composer install's
+# post-autoload-dump hook) needs bootstrap/cache/ to exist and be
+# writable, even before anything is written into it.
+mkdir -p bootstrap/cache
+
 echo "Registering our middleware and API routes in bootstrap/app.php..."
 php -r '
 $path = "bootstrap/app.php";
