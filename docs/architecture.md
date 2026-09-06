@@ -60,6 +60,10 @@ Prometheus scraping needs counters that persist *across* individual PHP requests
 
 `createSecrets: false` is the default. Values files are typically the first thing committed to git in a Helm-based project — if the chart's "happy path" was `helm install` with real passwords in `values.yaml`, that would be an actively bad security default. Instead, secrets are expected to already exist in the target namespace (via `kubectl create secret generic ...`, documented in `docs/security.md`), and `createSecrets: true` + `--set secretValues.xxx=...` is the explicit opt-in path CI uses for its own throwaway Kind cluster.
 
+## Why the Helm chart doesn't manage its own Namespace resource
+
+An earlier draft of this chart included `templates/namespace.yaml`, matching the plain `k8s/namespace.yaml` manifest. It was removed after CI caught a real conflict: Kubernetes Secrets have to be created into the target namespace *before* `helm install` runs (both the CI workflow and the manual `docs/deployment.md` walkthrough create secrets first) — so the namespace always has to exist beforehand, via `kubectl create namespace` or Helm's own `--create-namespace` flag. When the chart *also* tried to manage that same namespace as a release-owned resource, Helm correctly refused with `namespaces "research-platform" already exists`, because a namespace created externally carries no Helm ownership annotations for the chart to adopt. The fix is the standard one: let exactly one thing own namespace creation (the deployer, via `--create-namespace`/`kubectl create namespace`), and never duplicate that inside the chart itself.
+
 ## What I'd add given more time
 
 - Redis-backed sessions + `ReadWriteMany` storage to actually scale OJS beyond 1 replica.
