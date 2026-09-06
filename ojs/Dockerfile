@@ -6,7 +6,7 @@
 # with the PHP/Apache runtime it needs.
 
 ARG PHP_VERSION=8.2
-FROM php:${PHP_VERSION}-apache AS base
+FROM php:${PHP_VERSION}-apache-bookworm AS base
 
 # OJS 3.5 requires PHP 8.2+, so this build arg is deliberately pinned
 # to the version PKP tests against (see docs/architecture.md for the

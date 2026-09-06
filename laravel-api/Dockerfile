@@ -25,7 +25,7 @@ COPY . .
 RUN composer dump-autoload --optimize --no-dev
 
 # --- Stage 2: runtime image ---
-FROM php:8.2-apache AS runtime
+FROM php:8.2-apache-bookworm AS runtime
 
 LABEL org.opencontainers.image.title="Research API" \
       org.opencontainers.image.description="Small Laravel service built for this project, independent of OJS core."
